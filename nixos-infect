@@ -324,24 +324,29 @@ infect() {
   # shellcheck disable=SC1090
   source ~/.nix-profile/etc/profile.d/nix.sh
 
-  [[ -z "$NIX_CHANNEL" ]] && NIX_CHANNEL="nixos-23.05"
-  nix-channel --remove nixpkgs
-  nix-channel --add "https://nixos.org/channels/$NIX_CHANNEL" nixos
-  nix-channel --update
 
-  if [[ $NIXOS_CONFIG = http* ]]
-  then
-    curl $NIXOS_CONFIG -o /etc/nixos/configuration.nix
-    unset NIXOS_CONFIG
+  if [[ -z "$NIXOS_FLAKE" ]]; then
+    [[ -z "$NIX_CHANNEL" ]] && NIX_CHANNEL="nixos-23.05"
+    nix-channel --remove nixpkgs
+    nix-channel --add "https://nixos.org/channels/$NIX_CHANNEL" nixos
+    nix-channel --update
+
+    if [[ $NIXOS_CONFIG = http* ]]
+    then
+      curl $NIXOS_CONFIG -o /etc/nixos/configuration.nix
+      unset NIXOS_CONFIG
+    fi
+
+    export NIXOS_CONFIG="${NIXOS_CONFIG:-/etc/nixos/configuration.nix}"
+
+    nix-env --set \
+      -I nixpkgs=$HOME/.nix-defexpr/channels/nixos \
+      -f '<nixpkgs/nixos>' \
+      -p /nix/var/nix/profiles/system \
+      -A system
+  else
+    nix build --extra-experimental-features 'nix-command flakes' --profile /nix/var/nix/profiles/system --no-link "$NIXOS_FLAKE"
   fi
-
-  export NIXOS_CONFIG="${NIXOS_CONFIG:-/etc/nixos/configuration.nix}"
-
-  nix-env --set \
-    -I nixpkgs=$HOME/.nix-defexpr/channels/nixos \
-    -f '<nixpkgs/nixos>' \
-    -p /nix/var/nix/profiles/system \
-    -A system
 
   # Remove nix installed with curl | bash
   rm -fv /nix/var/nix/profiles/default*
@@ -389,7 +394,9 @@ checkExistingSwap
 if [[ -z "$NO_SWAP" ]]; then
     makeSwap # smallest (512MB) droplet needs extra memory!
 fi
-makeConf
+if [[ -z "$NIXOS_FLAKE" ]]; then
+  makeConf
+fi
 infect
 if [[ -z "$NO_SWAP" ]]; then
     removeSwap
